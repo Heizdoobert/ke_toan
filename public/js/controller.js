@@ -507,6 +507,53 @@ export class Controller {
   setupKeyConfigListeners() {
     this.view.btnRunRecon.addEventListener("click", () => this.handleRunReconcile());
     this.view.btnExportExcel.addEventListener("click", () => this.handleExportWorkbook());
+    this.setupReconciliationRowDetails();
+  }
+
+  setupReconciliationRowDetails() {
+    if (this.view.reconcileOutputTable) {
+      this.view.reconcileOutputTable.addEventListener("click", (e) => {
+        const tr = e.target.closest("tr.recon-result-row");
+        if (!tr) return;
+
+        // Highlight selected row with an active state effect
+        this.view.reconcileOutputTable.querySelectorAll("tr.recon-result-row").forEach(r => {
+          r.classList.remove("bg-indigo-50/70", "font-medium");
+        });
+        tr.classList.add("bg-indigo-50/70", "font-medium");
+
+        const idx = parseInt(tr.getAttribute("data-index"), 10);
+        const results = this.model.reconciliationResult && this.model.reconciliationResult.allCombined;
+        if (results && results[idx]) {
+          this.openDetailView(results[idx]);
+        }
+      });
+    }
+
+    // Modal Close actions setup
+    if (this.view.detailModalClose) {
+      this.view.detailModalClose.addEventListener("click", () => this.closeDetailView());
+    }
+    if (this.view.detailModalCloseBtn) {
+      this.view.detailModalCloseBtn.addEventListener("click", () => this.closeDetailView());
+    }
+    if (this.view.detailModal) {
+      this.view.detailModal.addEventListener("click", (e) => {
+        if (e.target === this.view.detailModal) {
+          this.closeDetailView();
+        }
+      });
+    }
+  }
+
+  openDetailView(item) {
+    const colsA = this.model.sourceA.columns || [];
+    const colsB = this.model.sourceB.columns || [];
+    this.view.renderDetailModal(item, colsA, colsB, this.model.matchKeys);
+  }
+
+  closeDetailView() {
+    this.view.hideDetailModal();
   }
 
   async handleRunReconcile() {

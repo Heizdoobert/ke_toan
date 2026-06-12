@@ -488,6 +488,95 @@
   <!-- Toast Floating Notification alerts container -->
   <div id="toast-container" class="fixed bottom-5 right-5 z-55 flex flex-col gap-2.5 pointer-events-none max-w-sm w-full"></div>
 
+  <!-- Detail View Modal -->
+  <div id="detail-modal" class="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-xs transition-opacity duration-200 opacity-0 pointer-events-none">
+    <div id="detail-modal-card" class="bg-white rounded-xl shadow-xl border border-slate-200 w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col transform scale-95 transition-transform duration-200">
+      <!-- Modal Header -->
+      <div class="px-5 py-4 border-b border-slate-150 bg-slate-50 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <span class="p-1.5 rounded-lg bg-indigo-50 text-indigo-600">
+            <i data-lucide="eye" class="h-4.5 w-4.5"></i>
+          </span>
+          <div>
+            <h3 class="text-xs font-bold text-slate-400 uppercase tracking-wide">CHI TIẾT ĐỐI CHIẾU</h3>
+            <p id="detail-modal-key" class="text-sm font-mono font-bold text-slate-800 truncate max-w-[500px]" title="Composite Key">Key: ---</p>
+          </div>
+        </div>
+        <div class="flex items-center gap-2.5">
+          <span id="detail-modal-status" class="px-2.5 py-0.5 rounded-full text-[10px] font-bold border">---</span>
+          <button id="detail-modal-close" class="text-slate-400 hover:text-slate-650 p-1 rounded-md hover:bg-slate-100 active:scale-95 transition cursor-pointer">
+            <i data-lucide="x" class="h-5 w-5"></i>
+          </button>
+        </div>
+      </div>
+      
+      <!-- Modal Body (Scrollable) -->
+      <div class="p-5 overflow-y-auto max-h-[calc(90vh-140px)] flex flex-col gap-4.5 custom-scrollbar">
+        <!-- Status & Discrepancy Alert banner -->
+        <div id="detail-modal-banner" class="p-3.5 rounded-lg border flex gap-3 text-xs leading-relaxed">
+          <i data-lucide="info" class="h-5 w-5 shrink-0"></i>
+          <div id="detail-modal-discrepancy-text" class="font-medium text-slate-700">None</div>
+        </div>
+
+        <!-- Two Columns Comparison -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+          <!-- Source A Card -->
+          <div class="border border-slate-150 rounded-lg overflow-hidden flex flex-col">
+            <div class="px-3.5 py-2.5 bg-indigo-50/50 border-b border-slate-150 flex items-center justify-between">
+              <span class="text-xs font-bold text-indigo-700 flex items-center gap-1.5">
+                <i data-lucide="file-text" class="h-3.5 w-3.5"></i> NGUỒN A (Ledger Source A)
+              </span>
+              <span id="detail-source-a-badge" class="text-[10px] bg-indigo-100 text-indigo-600 font-bold px-1.5 py-0.5 rounded">Active</span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs text-left border-collapse">
+                <thead class="bg-slate-50 border-b border-slate-150 text-[10px] text-slate-500 uppercase font-mono">
+                  <tr>
+                    <th class="px-3.5 py-2">Trường (Column)</th>
+                    <th class="px-3.5 py-2 text-right">Giá trị (Value)</th>
+                  </tr>
+                </thead>
+                <tbody id="detail-source-a-rows" class="divide-y divide-slate-100 text-slate-700">
+                  <!-- JS populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          <!-- Source B Card -->
+          <div class="border border-slate-150 rounded-lg overflow-hidden flex flex-col">
+            <div class="px-3.5 py-2.5 bg-emerald-50/50 border-b border-slate-150 flex items-center justify-between">
+              <span class="text-xs font-bold text-emerald-700 flex items-center gap-1.5">
+                <i data-lucide="file-text" class="h-3.5 w-3.5"></i> NGUỒN B (Ledger Source B)
+              </span>
+              <span id="detail-source-b-badge" class="text-[10px] bg-emerald-100 text-emerald-600 font-bold px-1.5 py-0.5 rounded">Active</span>
+            </div>
+            <div class="overflow-x-auto">
+              <table class="w-full text-xs text-left border-collapse">
+                <thead class="bg-slate-50 border-b border-slate-150 text-[10px] text-slate-500 uppercase font-mono">
+                  <tr>
+                    <th class="px-3.5 py-2">Trường (Column)</th>
+                    <th class="px-3.5 py-2 text-right">Giá trị (Value)</th>
+                  </tr>
+                </thead>
+                <tbody id="detail-source-b-rows" class="divide-y divide-slate-100 text-slate-700">
+                  <!-- JS populated -->
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Modal Footer -->
+      <div class="px-5 py-3.5 border-t border-slate-150 bg-slate-50 flex justify-end">
+        <button id="detail-modal-close-btn" class="bg-slate-800 hover:bg-slate-900 text-white font-bold py-1.5 px-4 rounded text-xs transition cursor-pointer">
+          Đóng chi tiết
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- Lucide Vector Icons Library CDN -->
   <script src="https://unpkg.com/lucide@latest"></script>
   <script>

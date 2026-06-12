@@ -81,6 +81,19 @@ export class View {
     this.cardLine = document.getElementById("card-chart-line");
     this.cardPie = document.getElementById("card-chart-pie");
     this.cardDoughnut = document.getElementById("card-chart-doughnut");
+
+    // Detail View Modal Elements
+    this.detailModal = document.getElementById("detail-modal");
+    this.detailModalClose = document.getElementById("detail-modal-close");
+    this.detailModalCloseBtn = document.getElementById("detail-modal-close-btn");
+    this.detailModalKey = document.getElementById("detail-modal-key");
+    this.detailModalStatus = document.getElementById("detail-modal-status");
+    this.detailModalBanner = document.getElementById("detail-modal-banner");
+    this.detailModalDiscrepancyText = document.getElementById("detail-modal-discrepancy-text");
+    this.detailSourceARows = document.getElementById("detail-source-a-rows");
+    this.detailSourceBRows = document.getElementById("detail-source-b-rows");
+    this.detailSourceABadge = document.getElementById("detail-source-a-badge");
+    this.detailSourceBBadge = document.getElementById("detail-source-b-badge");
   }
 
   showToast(message, type = "success") {
@@ -321,7 +334,7 @@ export class View {
       </thead>
     `;
 
-    let tbodyRowsHtml = results.map(row => {
+    let tbodyRowsHtml = results.map((row, idx) => {
       let statusBg = "";
       if (row.status === "Matched") {
         statusBg = "bg-emerald-50 text-emerald-800 border-emerald-300";
@@ -348,7 +361,7 @@ export class View {
       }).join("");
 
       return `
-        <tr class="hover:bg-slate-50 transition border-b border-slate-100">
+        <tr class="recon-result-row hover:bg-slate-100 cursor-pointer transition-colors duration-150 border-b border-slate-100" data-index="${idx}">
           <td class="px-3 py-2 border-r border-slate-150 font-mono text-slate-800 truncate max-w-[220px]" title="${row.compositeKey}">${row.compositeKey}</td>
           ${cellTextA}
           ${cellTextB}
@@ -599,5 +612,132 @@ export class View {
     this.showProgressBar(0);
     this.showPerformance(0);
     window.lucide?.createIcons();
+  }
+
+  renderDetailModal(item, colsA, colsB, matchKeys) {
+    if (!this.detailModal) return;
+
+    // 1. Set key title
+    this.detailModalKey.textContent = `${item.compositeKey || "Cấu trúc trống"}`;
+    this.detailModalKey.title = item.compositeKey || "";
+
+    // 2. Set Status Badge with dynamic classes
+    this.detailModalStatus.textContent = item.status || "Chưa xác định";
+    this.detailModalStatus.className = "px-2.5 py-0.5 rounded-full text-[10px] font-bold border";
+    
+    let statusBg = "";
+    let alertBg = "";
+    if (item.status === "Matched") {
+      statusBg = "bg-emerald-50 text-emerald-800 border-emerald-300";
+      alertBg = "bg-emerald-50 text-emerald-800 border-emerald-200";
+    } else if (item.status === "Unmatched") {
+      statusBg = "bg-rose-50 text-rose-800 border-rose-300";
+      alertBg = "bg-rose-50 text-rose-800 border-rose-200";
+    } else if (item.status === "Only In A") {
+      statusBg = "bg-amber-50 text-amber-800 border-amber-300";
+      alertBg = "bg-amber-50 text-amber-800 border-amber-200";
+    } else {
+      statusBg = "bg-sky-50 text-sky-800 border-sky-300";
+      alertBg = "bg-sky-50 text-sky-800 border-sky-200";
+    }
+    
+    this.detailModalStatus.classList.add(...statusBg.split(" "));
+
+    // 3. Set Banner text & formatting
+    this.detailModalBanner.className = `p-3.5 rounded-lg border flex gap-3 text-xs leading-relaxed ${alertBg}`;
+    this.detailModalDiscrepancyText.innerHTML = item.discrepancy 
+      ? `<strong>Phần lệch phân tích:</strong> ${item.discrepancy}` 
+      : `<strong>Khớp hợp chuẩn:</strong> Cân đối trùng khớp tất cả số liệu đối sánh chọn lọc.`;
+
+    // 4. Source A table data rendering
+    if (item.rowA) {
+      if (this.detailSourceABadge) {
+        this.detailSourceABadge.textContent = "Hoạt động";
+        this.detailSourceABadge.className = "text-[10px] bg-indigo-100 text-indigo-700 font-bold px-1.5 py-0.5 rounded border border-indigo-200";
+      }
+      this.detailSourceARows.innerHTML = colsA.map(col => {
+        const val = item.rowA[col];
+        const isKey = matchKeys.includes(col);
+        const formatVal = (val !== null && val !== undefined) ? String(val) : '<span class="text-slate-300 italic">Trống</span>';
+        const isHighlightKey = isKey ? "bg-indigo-50/50 font-bold text-indigo-900" : "";
+        return `
+          <tr class="${isHighlightKey}">
+            <td class="px-3 py-1.5 font-medium text-slate-500 flex items-center gap-1">
+              ${isKey ? '<i data-lucide="key" class="h-3 w-3 text-indigo-500"></i>' : ''}
+              <span>${col}</span>
+            </td>
+            <td class="px-3 py-1.5 text-right font-mono truncate max-w-[200px]" title="${val || ''}">${formatVal}</td>
+          </tr>
+        `;
+      }).join("");
+    } else {
+      if (this.detailSourceABadge) {
+        this.detailSourceABadge.textContent = "Thiếu dữ liệu";
+        this.detailSourceABadge.className = "text-[10px] bg-rose-50 text-rose-700 font-bold px-1.5 py-0.5 rounded border border-rose-200";
+      }
+      this.detailSourceARows.innerHTML = `
+        <tr>
+          <td colspan="2" class="p-6 text-center text-xs text-slate-400 italic bg-slate-50">
+            Không có thông tin tương thích tại Nguồn A (Chỉ tồn tại ở bên B)
+          </td>
+        </tr>
+      `;
+    }
+
+    // 5. Source B table data rendering
+    if (item.rowB) {
+      if (this.detailSourceBBadge) {
+        this.detailSourceBBadge.textContent = "Hoạt động";
+        this.detailSourceBBadge.className = "text-[10px] bg-emerald-100 text-emerald-700 font-bold px-1.5 py-0.5 rounded border border-emerald-200";
+      }
+      this.detailSourceBRows.innerHTML = colsB.map(col => {
+        const val = item.rowB[col];
+        const isKey = matchKeys.includes(col);
+        const formatVal = (val !== null && val !== undefined) ? String(val) : '<span class="text-slate-300 italic">Trống</span>';
+        const isHighlightKey = isKey ? "bg-emerald-50/50 font-bold text-emerald-900" : "";
+        return `
+          <tr class="${isHighlightKey}">
+            <td class="px-3 py-1.5 font-medium text-slate-500 flex items-center gap-1">
+              ${isKey ? '<i data-lucide="key" class="h-3 w-3 text-emerald-500"></i>' : ''}
+              <span>${col}</span>
+            </td>
+            <td class="px-3 py-1.5 text-right font-mono truncate max-w-[200px]" title="${val || ''}">${formatVal}</td>
+          </tr>
+        `;
+      }).join("");
+    } else {
+      if (this.detailSourceBBadge) {
+        this.detailSourceBBadge.textContent = "Thiếu dữ liệu";
+        this.detailSourceBBadge.className = "text-[10px] bg-rose-50 text-rose-700 font-bold px-1.5 py-0.5 rounded border border-rose-200";
+      }
+      this.detailSourceBRows.innerHTML = `
+        <tr>
+          <td colspan="2" class="p-6 text-center text-xs text-slate-400 italic bg-slate-50">
+            Không có thông tin tương thích tại Nguồn B (Chỉ tồn tại ở bên A)
+          </td>
+        </tr>
+      `;
+    }
+
+    // Trigger Lucide icons rebuild for the modal
+    window.lucide?.createIcons();
+
+    // 6. Reveal modal
+    this.detailModal.classList.remove("opacity-0", "pointer-events-none");
+    const modalBox = document.getElementById("detail-modal-card");
+    if (modalBox) {
+      modalBox.classList.remove("scale-95");
+      modalBox.classList.add("scale-100");
+    }
+  }
+
+  hideDetailModal() {
+    if (!this.detailModal) return;
+    this.detailModal.classList.add("opacity-0", "pointer-events-none");
+    const modalBox = document.getElementById("detail-modal-card");
+    if (modalBox) {
+      modalBox.classList.remove("scale-100");
+      modalBox.classList.add("scale-95");
+    }
   }
 }
