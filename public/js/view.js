@@ -17,6 +17,7 @@ export class View {
 
     // Top Action Buttons
     this.clearCacheBtn = document.getElementById("clear-cache-btn");
+    this.themeToggleBtn = document.getElementById("theme-toggle-btn");
 
     // Tab 1 Dropzones and File Upload Panel Elements
     this.dropzoneA = document.getElementById("dropzone-A");

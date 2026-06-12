@@ -17,6 +17,7 @@ export class Controller {
   }
 
   async init() {
+    this.initTheme();
     this.setupTabControls();
     this.setupDropzones();
     this.setupKeyConfigListeners();
@@ -770,26 +771,47 @@ export class Controller {
     const chartBorderColors = chartColors.map(c => c.replace("0.8", "1.0").replace("0.7", "1.0"));
 
     // Options Configuration factory
-    const generateOptions = (typeLabel) => ({
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          display: ["pie", "doughnut"].includes(typeLabel),
-          position: "bottom",
-          labels: { font: { family: "Inter", size: 10 }, boxWidth: 12 }
+    const generateOptions = (typeLabel) => {
+      const isDark = document.documentElement.classList.contains("dark");
+      return {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: ["pie", "doughnut"].includes(typeLabel),
+            position: "bottom",
+            labels: { 
+              color: isDark ? "#cbd5e1" : "#475569",
+              font: { family: "Inter", size: 10 }, 
+              boxWidth: 12 
+            }
+          },
+          tooltip: {
+            backgroundColor: "#1e293b",
+            bodyFont: { family: "Inter", size: 11 },
+            titleFont: { family: "Inter", size: 11, weight: "bold" }
+          }
         },
-        tooltip: {
-          backgroundColor: "#1e293b",
-          bodyFont: { family: "Inter", size: 11 },
-          titleFont: { family: "Inter", size: 11, weight: "bold" }
+        scales: ["pie", "doughnut"].includes(typeLabel) ? {} : {
+          x: { 
+            grid: { display: false }, 
+            ticks: { 
+              color: isDark ? "#94a3b8" : "#475569",
+              font: { family: "Inter", size: 9 }, 
+              maxRotation: 45, 
+              minRotation: 0 
+            } 
+          },
+          y: { 
+            grid: { color: isDark ? "rgba(255, 255, 255, 0.1)" : "#f1f5f9" }, 
+            ticks: { 
+              color: isDark ? "#94a3b8" : "#475569",
+              font: { family: "Inter", size: 9 } 
+            } 
+          }
         }
-      },
-      scales: ["pie", "doughnut"].includes(typeLabel) ? {} : {
-        x: { grid: { display: false }, ticks: { font: { family: "Inter", size: 9 }, maxRotation: 45, minRotation: 0 } },
-        y: { grid: { color: "#f1f5f9" }, ticks: { font: { family: "Inter", size: 9 } } }
-      }
-    });
+      };
+    };
 
     const ChartClass = window.Chart;
     if (!ChartClass) {
@@ -887,6 +909,50 @@ export class Controller {
 
   setupTopActions() {
     this.view.clearCacheBtn.addEventListener("click", () => this.handleClearCache());
+    if (this.view.themeToggleBtn) {
+      this.view.themeToggleBtn.addEventListener("click", () => this.handleThemeToggle());
+    }
+  }
+
+  initTheme() {
+    const theme = localStorage.getItem("theme");
+    if (theme === "dark") {
+      document.documentElement.classList.add("dark");
+    } else {
+      document.documentElement.classList.remove("dark");
+    }
+  }
+
+  handleThemeToggle() {
+    const isDark = document.documentElement.classList.toggle("dark");
+    localStorage.setItem("theme", isDark ? "dark" : "light");
+    this.view.showToast(isDark ? "Đã chuyển sang giao diện tối" : "Đã chuyển sang giao diện sáng", "success");
+    this.redrawAllChartsForTheme();
+  }
+
+  redrawAllChartsForTheme() {
+    if (this.charts) {
+      const isDark = document.documentElement.classList.contains("dark");
+      Object.keys(this.charts).forEach(key => {
+        const chart = this.charts[key];
+        if (chart) {
+          // Dynamically adjust tick and grid colors based on theme
+          if (chart.options.scales) {
+            if (chart.options.scales.x) {
+              chart.options.scales.x.ticks.color = isDark ? "#94a3b8" : "#475569";
+            }
+            if (chart.options.scales.y) {
+              chart.options.scales.y.grid.color = isDark ? "rgba(255, 255, 255, 0.1)" : "#f1f5f9";
+              chart.options.scales.y.ticks.color = isDark ? "#94a3b8" : "#475569";
+            }
+          }
+          if (chart.options.plugins && chart.options.plugins.legend && chart.options.plugins.legend.labels) {
+            chart.options.plugins.legend.labels.color = isDark ? "#cbd5e1" : "#475569";
+          }
+          chart.update();
+        }
+      });
+    }
   }
 
   async handleClearCache() {
