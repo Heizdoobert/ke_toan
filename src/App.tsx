@@ -3,29 +3,23 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-import React, { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect } from "react";
 import { 
-  FileSpreadsheet, 
   RefreshCw, 
-  ArrowLeftRight, 
   Download, 
-  HelpCircle, 
   Upload, 
-  AlertCircle, 
   CheckCircle2, 
-  FileWarning, 
-  ListRestart, 
-  Code2,
-  Terminal,
   Activity,
-  ChevronDown
+  History
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { SourceData, ReconciliationSchema, ReconciliationResult } from "./types";
-import { reconcileDataSources, extractCleanTransactionalData } from "./utils/reconciler";
+import { extractCleanTransactionalData } from "./utils/reconciler";
 import DataGrid from "./components/DataGrid";
 import SetupPanel from "./components/SetupPanel";
 import ExportLocalhost from "./components/ExportLocalhost";
+import ReconHistory from "./components/ReconHistory";
+import { ReconController, ReconHistoryItem } from "./controllers/ReconController";
 
 export default function App() {
   const [sourceA, setSourceA] = useState<SourceData>({ headers: [], rows: [], fileName: "" });
@@ -42,6 +36,7 @@ export default function App() {
   });
 
   const [reconciledResults, setReconciledResults] = useState<ReconciliationResult[]>([]);
+  const [history, setHistory] = useState<ReconHistoryItem[]>([]);
   const [progress, setProgress] = useState(0);
   const [elapsedTime, setElapsedTime] = useState(0);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -54,52 +49,102 @@ export default function App() {
   const [activeInputTabA, setActiveInputTabA] = useState<"file" | "paste">("file");
   const [activeInputTabB, setActiveInputTabB] = useState<"file" | "paste">("file");
 
-  // Load configuration from Cache on mounted
+  // Load configuration and data from persistent JSON database on mount
   useEffect(() => {
-    const cached = localStorage.getItem("reconciler_cached_rules");
-    if (cached) {
+    async function loadInitialData() {
       try {
-        const parsed = JSON.parse(cached);
-        if (parsed.schema) {
-          setSchema(parsed.schema);
+        setIsProcessing(true);
+        const db = await ReconController.loadDatabase();
+        if (db.schema) setSchema(db.schema);
+        if (db.sourceA) {
+          setSourceA(db.sourceA);
+          setLoadedHeadersA(db.sourceA.headers);
         }
-        if (parsed.headersA) setLoadedHeadersA(parsed.headersA);
-        if (parsed.headersB) setLoadedHeadersB(parsed.headersB);
+        if (db.sourceB) {
+          setSourceB(db.sourceB);
+          setLoadedHeadersB(db.sourceB.headers);
+        }
+        if (db.reconciledResults) setReconciledResults(db.reconciledResults);
+        if (db.history) setHistory(db.history);
       } catch (err) {
-        console.error("Cache deserialization failed.", err);
+        console.error("Failed loading initial data from JSON storage", err);
+      } finally {
+        setIsProcessing(false);
       }
     }
+    loadInitialData();
   }, []);
 
-  // Update rule settings and persist rule schema in the db
-  const updateSchema = (newSchema: ReconciliationSchema) => {
+  // Update rule settings and persist schema in the JSON db via backend Express controller
+  const updateSchema = async (newSchema: ReconciliationSchema) => {
     setSchema(newSchema);
-    const cacheObj = {
-      schema: newSchema,
-      headersA: sourceA.headers.length > 0 ? sourceA.headers : loadedHeadersA,
-      headersB: sourceB.headers.length > 0 ? sourceB.headers : loadedHeadersB
-    };
-    localStorage.setItem("reconciler_cached_rules", JSON.stringify(cacheObj));
+    try {
+      await ReconController.saveSchema(newSchema);
+    } catch (err) {
+      console.error("Failed updating schema settings in backend model", err);
+    }
   };
 
-  // Clear configuration caches
-  const handleClearCache = () => {
-    localStorage.removeItem("reconciler_cached_rules");
-    setSchema({
-      keysA: [""],
-      keysB: [""],
-      comparePairs: [{ colA: "", colB: "" }],
-      groupByEnabled: false
-    });
-    setSourceA({ headers: [], rows: [], fileName: "" });
-    setSourceB({ headers: [], rows: [], fileName: "" });
-    setReconciledResults([]);
-    setLoadedHeadersA([]);
-    setLoadedHeadersB([]);
-    setPasteA("");
-    setPasteB("");
-    setElapsedTime(0);
-    setProgress(0);
+  // Keep Source A changes in sync with database
+  const handleUpdateSourceA = async (headers: string[], rows: Record<string, any>[]) => {
+    const newSource = { headers, rows, fileName: sourceA.fileName };
+    setSourceA(newSource);
+    setLoadedHeadersA(headers);
+    try {
+      await ReconController.saveSources(newSource, sourceB);
+    } catch (err) {
+      console.error("Failed updating Source A data in backend model", err);
+    }
+  };
+
+  // Keep Source B changes in sync with database
+  const handleUpdateSourceB = async (headers: string[], rows: Record<string, any>[]) => {
+    const newSource = { headers, rows, fileName: sourceB.fileName };
+    setSourceB(newSource);
+    setLoadedHeadersB(headers);
+    try {
+      await ReconController.saveSources(sourceA, newSource);
+    } catch (err) {
+      console.error("Failed updating Source B data in backend model", err);
+    }
+  };
+
+  // Erase run records in history
+  const handleDeleteHistory = async (id: string) => {
+    try {
+      const db = await ReconController.deleteHistoryItem(id);
+      setHistory(db.history);
+    } catch (err) {
+      console.error("Failed executing entry erase", err);
+    }
+  };
+
+  // Clear configuration caches and wipe server databases
+  const handleClearCache = async () => {
+    try {
+      setIsProcessing(true);
+      await ReconController.clearDatabase();
+      setSchema({
+        keysA: [""],
+        keysB: [""],
+        comparePairs: [{ colA: "", colB: "" }],
+        groupByEnabled: false
+      });
+      setSourceA({ headers: [], rows: [], fileName: "" });
+      setSourceB({ headers: [], rows: [], fileName: "" });
+      setReconciledResults([]);
+      setHistory([]);
+      setLoadedHeadersA([]);
+      setLoadedHeadersB([]);
+      setPasteA("");
+      setPasteB("");
+      setElapsedTime(0);
+      setProgress(0);
+    } catch (err) {
+      alert("Failed purges caches: " + err);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // Process uploaded files, supports multiple and single .xlsx, .xls, .csv
@@ -112,7 +157,7 @@ export default function App() {
     const start = performance.now();
 
     // Direct filters
-    const validFiles = Array.from(files).filter((file) => {
+    const validFiles = (Array.from(files) as File[]).filter((file) => {
       const ext = file.name.split(".").pop()?.toLowerCase();
       return ext === "xlsx" || ext === "xls" || ext === "csv";
     });
@@ -124,7 +169,7 @@ export default function App() {
       return;
     }
 
-    setProgress(40);
+    setProgress(45);
 
     try {
       const XLSX = (window as any).XLSX;
@@ -194,21 +239,33 @@ export default function App() {
         : `Combined folder (${validFiles.length} files)`;
 
       if (side === "A") {
-        setSourceA({ headers: masterHeaders, rows: combinedRows, fileName: fileNameLabel });
+        const newSourceA = { headers: masterHeaders, rows: combinedRows, fileName: fileNameLabel };
+        setSourceA(newSourceA);
         setLoadedHeadersA(masterHeaders);
         
-        // Pick top available column as matching key
+        let newSchema = { ...schema };
         if (masterHeaders.length > 0 && (!schema.keysA[0])) {
-          updateSchema({ ...schema, keysA: [masterHeaders[0]] });
+          newSchema.keysA = [masterHeaders[0]];
         }
+        
+        // Sync to server memory databases
+        await ReconController.saveSources(newSourceA, sourceB);
+        await ReconController.saveSchema(newSchema);
+        setSchema(newSchema);
       } else {
-        setSourceB({ headers: masterHeaders, rows: combinedRows, fileName: fileNameLabel });
+        const newSourceB = { headers: masterHeaders, rows: combinedRows, fileName: fileNameLabel };
+        setSourceB(newSourceB);
         setLoadedHeadersB(masterHeaders);
 
-        // Pick top available column as matching key
+        let newSchema = { ...schema };
         if (masterHeaders.length > 0 && (!schema.keysB[0])) {
-          updateSchema({ ...schema, keysB: [masterHeaders[0]] });
+          newSchema.keysB = [masterHeaders[0]];
         }
+
+        // Sync to server memory databases
+        await ReconController.saveSources(sourceA, newSourceB);
+        await ReconController.saveSchema(newSchema);
+        setSchema(newSchema);
       }
 
       setElapsedTime(Math.round(performance.now() - start));
@@ -222,7 +279,7 @@ export default function App() {
   };
 
   // Process text-area copy pasted table data (Ctrl+V)
-  const handlePasteImport = (side: "A" | "B") => {
+  const handlePasteImport = async (side: "A" | "B") => {
     const rawText = side === "A" ? pasteA : pasteB;
     if (!rawText.trim()) {
       alert("Target input text structure is empty.");
@@ -260,17 +317,27 @@ export default function App() {
 
       const descLabel = `Ctrl+V input (${rows.length} rows)`;
       if (side === "A") {
-        setSourceA({ headers, rows, fileName: descLabel });
+        const newSourceA = { headers, rows, fileName: descLabel };
+        setSourceA(newSourceA);
         setLoadedHeadersA(headers);
+        let newSchema = { ...schema };
         if (headers.length > 0 && (!schema.keysA[0])) {
-          updateSchema({ ...schema, keysA: [headers[0]] });
+          newSchema.keysA = [headers[0]];
         }
+        await ReconController.saveSources(newSourceA, sourceB);
+        await ReconController.saveSchema(newSchema);
+        setSchema(newSchema);
       } else {
-        setSourceB({ headers, rows, fileName: descLabel });
+        const newSourceB = { headers, rows, fileName: descLabel };
+        setSourceB(newSourceB);
         setLoadedHeadersB(headers);
+        let newSchema = { ...schema };
         if (headers.length > 0 && (!schema.keysB[0])) {
-          updateSchema({ ...schema, keysB: [headers[0]] });
+          newSchema.keysB = [headers[0]];
         }
+        await ReconController.saveSources(sourceA, newSourceB);
+        await ReconController.saveSchema(newSchema);
+        setSchema(newSchema);
       }
 
       setElapsedTime(Math.round(performance.now() - start));
@@ -282,26 +349,33 @@ export default function App() {
     }
   };
 
-  // Run the core dual-hash map lookup reconciliation loop
-  const handleExecutionRecon = () => {
+  // Run the core dual-hash map lookup reconciliation loop on server Controller!
+  const handleExecutionRecon = async () => {
     if (sourceA.rows.length === 0 || sourceB.rows.length === 0) return;
     
     setIsProcessing(true);
     setProgress(20);
 
-    setTimeout(() => {
+    try {
+      // Sync sources and schemas first to be 100% sure
+      await ReconController.saveSources(sourceA, sourceB);
       setProgress(50);
-      const { results, executionTimeMs } = reconcileDataSources(sourceA.rows, sourceB.rows, schema);
+
+      // Delegate reconciliation calculation to our persistent Express server
+      const response = await ReconController.executeReconciliation();
       
       setProgress(90);
-      setReconciledResults(results);
-      setElapsedTime(executionTimeMs);
+      setReconciledResults(response.reconciledResults);
+      setElapsedTime(response.elapsedTime);
+      setHistory(response.history);
       
-      setTimeout(() => {
-        setProgress(100);
-        setIsProcessing(false);
-      }, 150);
-    }, 100);
+      setProgress(100);
+    } catch (err: any) {
+      alert("Error executing reconciliation on Node.js RAM DB: " + err.message);
+      setProgress(0);
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   // 3-Sheet Excel Writer via SheetJS
@@ -388,7 +462,7 @@ export default function App() {
                 Universal Accounting Data Reconciler
               </h1>
               <p className="text-[10px] text-indigo-300 font-mono flex items-center gap-1">
-                <span>Ultra Reconciler Pro v1.0 [Full local RAM Engine]</span>
+                <span>Ultra Reconciler Pro v1.1 [Full stack MVC JSON Server-Side Engine]</span>
               </p>
             </div>
           </div>
@@ -399,7 +473,7 @@ export default function App() {
               className="bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-300 hover:text-white font-medium text-xs px-3 py-1.5 border border-slate-700 rounded-md transition duration-150 flex items-center gap-1.5 cursor-pointer shadow-xs"
               id="clear-all-cache-btn"
             >
-              <RefreshCw className="h-3 w-3 text-indigo-400" /> Clear Cache Database
+              <RefreshCw className="h-3 w-3 text-indigo-400" /> Clear Database Caches
             </button>
           </div>
         </div>
@@ -417,7 +491,7 @@ export default function App() {
             </div>
             {elapsedTime > 0 && (
               <span className="font-mono text-xs bg-indigo-50 border border-indigo-100 text-indigo-700 px-2 py-0.5 rounded shadow-2xs">
-                Speed: {elapsedTime} ms / RAM calculation
+                Speed: {elapsedTime} ms / Node Client-Server calculation
               </span>
             )}
           </div>
@@ -560,10 +634,8 @@ export default function App() {
             headers={sourceA.headers}
             rows={sourceA.rows}
             fileName={sourceA.fileName}
-            onUpdateData={(headers, rows) => setSourceA({ ...sourceA, headers, rows })}
-            onClear={() => {
-              setSourceA({ headers: [], rows: [], fileName: "" });
-            }}
+            onUpdateData={handleUpdateSourceA}
+            onClear={() => handleUpdateSourceA([], [])}
           />
           <DataGrid
             title="Preview Ledger Source B"
@@ -571,10 +643,8 @@ export default function App() {
             headers={sourceB.headers}
             rows={sourceB.rows}
             fileName={sourceB.fileName}
-            onUpdateData={(headers, rows) => setSourceB({ ...sourceB, headers, rows })}
-            onClear={() => {
-              setSourceB({ headers: [], rows: [], fileName: "" });
-            }}
+            onUpdateData={handleUpdateSourceB}
+            onClear={() => handleUpdateSourceB([], [])}
           />
         </div>
 
@@ -590,6 +660,11 @@ export default function App() {
             onRunReconciliation={handleExecutionRecon}
             disabled={sourceA.rows.length === 0 || sourceB.rows.length === 0 || isProcessing}
           />
+        </div>
+
+        {/* Reconciliation Persistent History Log */}
+        <div className="grid grid-cols-1">
+          <ReconHistory history={history} onDeleteHistory={handleDeleteHistory} />
         </div>
 
         {/* Reconciliation Master Outputs report */}
@@ -727,10 +802,10 @@ export default function App() {
                           {/* Audit Outputs */}
                           <td className="px-3 py-2 border-r border-slate-150 select-none">
                             <span className={`px-2 py-0.5 rounded-full text-[10px] font-bold border ${statusBg}`}>
-                              {item.status}
+                                {item.status}
                             </span>
                           </td>
-                          <td className="px-3 py-2 text-slate-600 font-medium break-all">
+                          <td className="px-3 py-2 text-slate-600 font-medium break-all font-sans">
                             {item.discrepancy || <span className="text-emerald-600">Equivalence matches verified.</span>}
                           </td>
                         </tr>
@@ -753,7 +828,7 @@ export default function App() {
       {/* Humble Footer */}
       <footer className="bg-slate-900 border-t border-indigo-950 text-slate-400 font-mono text-[10px] py-6 text-center mt-auto uppercase tracking-wider relative">
         <div className="max-w-7xl mx-auto px-4">
-          All data computations executed serverless in RAM • Designed by Senior Accounting System Architect
+          All calculations synchronized server-side to JSON Database • Structured Corporate Accounting Architecture
         </div>
       </footer>
     </div>
